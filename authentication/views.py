@@ -1,22 +1,28 @@
 # views.py
 import logging
 
+import requests
+from django.conf import settings
+from django.contrib.auth import login
+from django.shortcuts import redirect
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
+from google.auth.transport import requests
 from rest_framework import generics, status, viewsets
 from rest_framework import permissions
+from rest_framework.authtoken.models import Token
 from rest_framework.parsers import FileUploadParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
-from google.oauth2 import id_token
-from config.settings import GOOGLE_CLIENT_ID
-from google.auth.transport import requests
+
+from config import settings
 
 from base.permissions import IsOwner
 from .models import User
-from .serializers import UserSerializer, LoginSerializer, SignUpSerializer, TokenSerializer, GoogleLoginSerializer
+from .serializers import UserSerializer, LoginSerializer, SignUpSerializer, TokenSerializer
+
 
 logger = logging.getLogger('authentication')
 
@@ -120,7 +126,7 @@ class LogoutView(APIView):
             logger.warning(f"User {request.user.id} is logging out failed.",
                            extra={'data': "Invalid token"})
             return Response(status=status.HTTP_400_BAD_REQUEST, data={
-                            "message": "Invalid token"})
+                "message": "Invalid token"})
         except Exception as e:
             logger.warning(f"User {request.user.id} is logging out failed.{type(e)}")
             return Response(status=status.HTTP_400_BAD_REQUEST)
@@ -163,10 +169,10 @@ class LoginView(generics.GenericAPIView):
         else:
 
             logger.warning(f"User  is logging in failed.", extra={
-                           'data': "email and password are required"})
+                'data': "email and password are required"})
             # Invalid request, missing email or password
             return Response(status=status.HTTP_400_BAD_REQUEST, data={
-                            "message": "email and password are required"})
+                "message": "email and password are required"})
 
 
 class SignUpView(generics.CreateAPIView):
@@ -209,60 +215,73 @@ class SignUpView(generics.CreateAPIView):
         }, status=status.HTTP_201_CREATED)
 
 
-class GoogleLoginView(generics.GenericAPIView):
-    """
-    A view for handling user login via Google OAuth2 authentication.
-    """
+def google_login(request):
+    host_url = request.build_absolute_uri('/')[:-1]
+    next_ = request.GET.get('next', settings.REACT_APP_URL)
+    google_oauth_url = (
+            'https://accounts.google.com/o/oauth2/v2/auth'
+            '?response_type=code'
+            f'&client_id={settings.GOOGLE_CLIENT_ID}'
+            f'&redirect_uri={host_url}/{settings.GOOGLE_REDIRECT_URI}'
+            '&scope=email%20profile'
+            '&access_type=offline'
+            '&prompt=consent' + f'&state={next_}'
+    )
+    return redirect(google_oauth_url)
 
-    # Set the serializer class used to serialize and deserialize user data
-    serializer_class = GoogleLoginSerializer
 
-    def post(self, request, *args, **kwargs):
-        """
-        Authenticate the user using Google OAuth2 and generate access and refresh tokens.
-        """
-        # Get the user's Google OAuth2 token from the request data
-        logger.info(f"User is logging in.")
-        google_key = request.data.get('google_key')
+def google_callback(request):
+    code = request.GET.get('code')
+    if not code:
+        logger.error('Google OAuth code not found')
+        return redirect('google_login')  # Or handle with an error message
+    state = request.GET.get('state', '')
+    host_url = request.build_absolute_uri('/')[:-1]
+    token_url = 'https://oauth2.googleapis.com/token'
+    token_data = {
+        'code': code,
+        'client_id': settings.GOOGLE_CLIENT_ID,
+        'client_secret': settings.GOOGLE_CLIENT_SECRET,
+        'redirect_uri': f'{host_url}/{settings.GOOGLE_REDIRECT_URI}',
+        'grant_type': 'authorization_code',
+    }
 
-        # If a Google OAuth2 token was provided, attempt to authenticate the user
-        if google_key:
-            try:
-                # Verify the Google OAuth2 token and extract user information
-                user_info = id_token.verify_oauth2_token(
-                    google_key, requests.Request(),
-                    GOOGLE_CLIENT_ID
-                )
-                logger.warning(f"User {user_info['email']} is trying to logging in.", extra={'data': user_info})
+    token_response = requests.post(token_url, data=token_data)
+    token_json = token_response.json()
 
-                # Attempt to retrieve an existing user with the authenticated email address
-                user = User.objects.filter(email=user_info['email']).first()
+    access_token = token_json.get('access_token')
 
-                # If a user with the authenticated email exists, generate access and refresh tokens and return them
-                if user:
-                    logger.warning(f"User {user.get_full_name()} is logging in.")
-                    token = RefreshToken.for_user(user)
-                    return Response({
-                        'refresh': str(token),
-                        'access': str(token.access_token),
-                    })
-                # If no user with the authenticated email exists, create a new user and generate access and refresh
-                # tokens
-                else:
-                    logger.warning(f"User {user_info['email']} is logging in for the first time.")
-                    user = User.objects.create(
-                        email=user_info['email'],
-                        full_name=user_info['name'],
-                    )
+    if not access_token:
+        logger.error(f"Google OAuth token error: {token_json}")
+        return redirect('google_login')
+    if 'error' in token_json:
+        logger.error(f"Google OAuth token error: {token_json['error']}")
+        return redirect('google_login')  # Optionally, show a more descriptive error message
 
-                    token = RefreshToken.for_user(user)
+    # Fetch user information
+    user_info_url = 'https://www.googleapis.com/oauth2/v1/userinfo'
+    user_info_params = {'access_token': access_token}
+    user_info_response = requests.get(user_info_url, params=user_info_params)
+    user_info = user_info_response.json()
 
-                    return Response({
-                        'refresh': str(token),
-                        'access': str(token.access_token),
-                    })
+    # Create or log in the user
+    email = user_info.get('email')
+    name = user_info.get('name', email.split("@")[0])
+    profile = user_info.get('picture', None)  # Handle missing profile picture
 
-            # If an exception is raised during authentication, return a bad request response
-            except (ValueError,) as e:
-                logger.warning(f"User  is logging in failed.", extra={'data': e})
-                return Response(status=status.HTTP_400_BAD_REQUEST, data={'message': str(e)})
+    # Check if user exists, else create a new user
+    try:
+        user = User.objects.get(email=email)
+    except User.DoesNotExist:
+        user = User.objects.create(email=email, full_name=name, profile=profile)
+    if not user.is_active:
+        user.is_active = True
+        user.full_name = name
+        user.save()
+    login(request, user)
+    token = Token.objects.get_or_create(user=user)[0]
+    try:
+        return redirect(state + f'/login?token={token.key}')
+    # if state is none
+    except:
+        return redirect(settings.REACT_APP_URL + f'/login?token={token.key}')
