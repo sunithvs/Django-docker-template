@@ -11,15 +11,16 @@ REST_FRAMEWORK = {
     'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend'],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 50,
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ],
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework.authentication.TokenAuthentication',
+    ),
+
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.AnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle'
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '30000/day',
+        'anon': '50/day',
         'user': '20000/day',
         'user_sec': '2/second',
         'user_min': '30/minute',
@@ -27,14 +28,19 @@ REST_FRAMEWORK = {
         'user_day': '2000/day',
     },
     'DEFAULT_PERMISSION_CLASSES': (
-        'rest_framework.permissions.AllowAny',
+        'rest_framework.permissions.IsAuthenticated',
     ),
     'DEFAULT_PARSER_CLASSES': (
         'rest_framework.parsers.JSONParser',
         'rest_framework.parsers.FormParser',
         'rest_framework.parsers.MultiPartParser',
     ),
-    'DEFAULT_SCHEMA_CLASS': 'rest_framework.schemas.coreapi.AutoSchema'
+    'DEFAULT_SCHEMA_CLASS': 'rest_framework.schemas.coreapi.AutoSchema',
+
+    'DEFAULT_VERSIONING_CLASS': 'rest_framework.versioning.QueryParameterVersioning',
+    'DEFAULT_VERSION': 'v1',
+    'ALLOWED_VERSIONS': ['v1', 'v2'],  # List the allowed versions
+    'VERSION_PARAM': 'version',  # Optional, for query parameter or header versioning
 }
 
 SWAGGER_SETTINGS = {
@@ -296,3 +302,29 @@ SIMPLE_JWT = {
     "SLIDING_TOKEN_OBTAIN_SERIALIZER": "rest_framework_simplejwt.serializers.TokenObtainSlidingSerializer",
     "SLIDING_TOKEN_REFRESH_SERIALIZER": "rest_framework_simplejwt.serializers.TokenRefreshSlidingSerializer",
 }
+
+# settings.py
+
+GOOGLE_CLIENT_ID = env.str('GOOGLE_CLIENT_ID', default="")
+GOOGLE_CLIENT_SECRET = env.str('GOOGLE_CLIENT_SECRET', default="")
+GOOGLE_REDIRECT_URI = env.str('GOOGLE_REDIRECT_URI', default="authentication/google/callback/")
+
+# CELERY_BROKER_URL = "redis://redis:6379/0"
+CELERY_BROKER_URL = env.str('CELERY_BROKER_URL', default="redis://redis:6379/0")
+# # CELERY_RESULT_BACKEND = 'django-db'  # To store task results in the database
+# CELERY_ACCEPT_CONTENT = ['json']
+# CELERY_TASK_SERIALIZER = 'json'
+# CELERY_RESULT_SERIALIZER = 'json'
+
+import sentry_sdk
+
+sentry_sdk.init(
+    dsn=env.str('SENTRY_DSN', default=''),
+    # Set traces_sample_rate to 1.0 to capture 100%
+    # of transactions for tracing.
+    traces_sample_rate=1.0,
+    # Set profiles_sample_rate to 1.0 to profile 100%
+    # of sampled transactions.
+    # We recommend adjusting this value in production.
+    profiles_sample_rate=1.0,
+)

@@ -1,0 +1,33 @@
+name: AWS Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+
+      - name: Configure AWS CLI
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: SSH into AWS Instance
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.AWS_INSTANCE_IP }}
+          username: ${{ secrets.AWS_INSTANCE_USERNAME }}
+          key: ${{ secrets.AWS_INSTANCE_PRIVATE_KEY }}
+          port: ${{ secrets.AWS_INSTANCE_SSH_PORT }}
+          script: |
+            cd /home/ubuntu/eventsradar-api-v2/
+            git pull origin main
+            docker compose restart

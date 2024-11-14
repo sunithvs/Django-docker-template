@@ -70,7 +70,7 @@ class BaseUser(AbstractBaseUser, PermissionsMixin):
         _("active"),
         default=True,
         help_text=_(
-            "Designates whether this user should be treated as active. "
+            "Designates whether this user should be treated as active."
             "Unselect this instead of deleting accounts."
         ),
     )
@@ -107,7 +107,7 @@ class BaseUser(AbstractBaseUser, PermissionsMixin):
             mail.EmailMessage(
                 subject, message, from_email, [
                     self.email], connection=connection, **kwargs).send()
-        # send_mail(subject, message, from_email, [self.email], **kwargs)
+    # send_mail(subject, message, from_email, [self.email], **kwargs)
 
 
 class User(BaseUser):
@@ -115,4 +115,7 @@ class User(BaseUser):
     this is a custom user model extending BaseUser
     """
 
-    mobile_number = models.CharField(max_length=20, blank=True, null=True)
+    profile = models.URLField(max_length=255, blank=True, null=True)
+
+    def __str__(self):
+        return self.full_name

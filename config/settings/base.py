@@ -70,8 +70,8 @@ INSTALLED_APPS = [
 THIRD_PARTY_APPS = [
     "rest_framework",
     'drf_yasg',
-    'rest_framework_simplejwt',
     'django_filters',
+    'rest_framework.authtoken'
 ]
 
 # Custom apps
@@ -162,3 +162,5 @@ if USE_REDIS:
     }
 
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 3000
+GOOGLE_REDIRECT_URI = env.str("GOOGLE_REDIRECT_URI", default="authentication/google/callback/")
+AUTH_SUCCESS_REDIRECT = env.str("AUTH_SUCCESS_REDIRECT", default="/")

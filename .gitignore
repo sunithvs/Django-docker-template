@@ -23,3 +23,9 @@ node_modules
 .next
 admin/.next
 build/
+media/
+.coverage
+htmlcov
+.coverage.*
+
+.env*
